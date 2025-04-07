@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { Menu, X } from "lucide-react"; // Icon imports for a modern look
@@ -22,7 +23,8 @@ const NavBar = () => {
             { name: "My Products", path: "/my-products" },
             { name: "Add Products", path: "/create-product" },
             { name: "Cart", path: "/cart" },
-            { name: "Profile", path:"/profile"},
+            { name: "Profile", path: "/profile" },
+            { name: "My Orders", path:"/myorders"}
           ].map((link) => (
             <NavLink
               key={link.path}
@@ -53,7 +55,8 @@ const NavBar = () => {
               { name: "My Products", path: "/my-products" },
               { name: "Add Products", path: "/create-product" },
               { name: "Cart", path: "/cart" },
-              { name: "Profile", path:"/profile"},
+              { name: "Profile", path: "/profile" },
+              { name: "My Orders", path:"/myorders"},
             ].map((link) => (
               <li key={link.path}>
                 <NavLink
