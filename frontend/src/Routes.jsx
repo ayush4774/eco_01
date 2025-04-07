@@ -1,3 +1,4 @@
+
 import LoginPage from './pages/Login'
 import SignupPage from './pages/Signup';
 import Home from './pages/Home';
@@ -9,7 +10,7 @@ import Profile from './pages/profile';
 import CreateAddress from './pages/createAddress';
 import SelectAddress from './pages/selectAddress';
 import OrderConfirmation from './pages/OrderConfirmation';
+import MyOrdersPage from './pages/myorders';
 
 
-export {LoginPage,SignupPage,Home,CreateProduct,MyProducts,Cart,ProductDetails,Profile,CreateAddress,SelectAddress,OrderConfirmation};
-
+export {LoginPage,SignupPage,Home,CreateProduct,MyProducts,Cart,ProductDetails,Profile,CreateAddress,SelectAddress,OrderConfirmation,MyOrdersPage};

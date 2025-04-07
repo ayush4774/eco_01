@@ -1,152 +1,98 @@
-const express = require("express");
-const path = require("path");
-const fs = require("fs");
-const bcrypt = require("bcrypt"); 
-const User = require("../model/User");
-const jwt=require('jsonwebtoken')
-const sendMail=require('../utils/sendMail')
+
+const express = require('express');
 const router = express.Router();
-const { upload } = require("../multer");
-const ErrorHandler = require("../utils/ErrorHandler");
-const catchAsyncErrors = require("../middleware/catchAsyncErrors"); // Import catchAsyncErrors
+const Order = require('../model/order'); // Adjust path as needed
+const User = require('../model/user');   // Adjust path as needed
 
-// create user
-router.post(
-    "/create-user",
-    upload.single("file"),
-    catchAsyncErrors(async (req, res, next) => {
-        console.log("Creating user...");
-        const { name, email, password } = req.body;
+router.post('/place-order', async (req, res) => {
+    try {
+        const { email, orderItems, shippingAddress } = req.body;
 
-        const userEmail = await User.findOne({ email });
-        if (userEmail) {
-            if (req.file) {
-                const filepath = 
-                path.join(__dirname, "../uploads", 
-                    req.file.filename);
-                try {
-                    fs.unlinkSync(filepath);
-                } catch (err) {
-                    console.log("Error removing file:", err);
-                    return res.status(500).json({ message: "Error removing file" });
-                }
-            }
-            return next(new ErrorHandler("User already exists", 400));
+        // Validate request data
+        if (!email) {
+            return res.status(400).json({ message: 'Email is required.' });
+        }
+        if (!orderItems || !Array.isArray(orderItems) || orderItems.length === 0) {
+            return res.status(400).json({ message: 'Order items are required.' });
+        }
+        if (!shippingAddress) {
+            return res.status(400).json({ message: 'Shipping address is required.' });
         }
 
-        let fileUrl = "";
-        if (req.file) {
-            fileUrl = path.join("uploads", req.file.filename);
+        // Retrieve user _id from the user collection using the provided email
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found.' });
         }
-        const hashedPassword = await bcrypt.hash(password, 10);
-        console.log("At Create ", "Password: ", password, "Hash: ", hashedPassword);
-        const user = await User.create({
-            name,
-            email,
-            password: hashedPassword,
-            avatar: {
-                public_id: req.file?.filename || "",
-                url: fileUrl,
-            },
+
+        // Create separate orders for each order item
+        const orderPromises = orderItems.map(async (item) => {
+            const totalAmount = item.price * item.quantity;
+            const order = new Order({
+                user: user._id,
+                orderItems: [item], // Each order contains a single item
+                shippingAddress,
+                totalAmount,
+            });
+            return order.save();
         });
-        console.log(user);
-        res.status(201).json({ success: true, user });
-    })
-);
 
+        const orders = await Promise.all(orderPromises);
 
-router.post('/login',catchAsyncErrors(async(req,res,nex)=>{
-    console.log('Creating User...')
-    const {email,password} = req.body
+        // Clear user's cart after placing orders (assuming a Cart model exists)
+        await User.updateOne({ _id: user._id }, { $set: { cart: [] } });
 
-    if(!email || !password){
-        return next(new ErrorHandler("pls provide credentials!",400))
+        res.status(201).json({ message: 'Orders placed and cart cleared successfully.', orders });
+    } catch (error) {
+        console.error('Error placing orders:', error);
+        res.status(500).json({ message: error.message });
     }
+});
 
-    const user = await User.findOne({email}).select("+password")
-    if(!user){
-        return next(new ErrorHandler("Invalid Emai or Password",401))
+router.get('/myorders', async (req, res) => {
+    try {
+        // Retrieve email from query parameters
+        const { email } = req.query;
+        if (!email) {
+            return res.status(400).json({ message: 'Email is required.' });
+        }
+
+        // Find user by email
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        // Retrieve orders for the user
+        const orders = await Order.find({ user: user._id });
+        res.status(200).json({ orders });
+    } catch (error) {
+        console.error('Error fetching orders:', error);
+        res.status(500).json({ message: error.message });
     }
+});
 
-    const isPasswordMatched = await bcrypt.compare(password,user.password)
+router.patch('/cancel-order/:orderId', async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        console.log("fff")
+        // Find the order by ID
+        const order = await Order.findById(orderId);
+        console.log(order);
+        if (!order) {
+            return res.status(404).json({ message: 'Order not found.' });
+        }
 
-    console.log("At auth","Password:",password,"Hash:",user.password)
+        // Update order status to 'cancelled'
+        order.orderStatus = 'Cancelled';
+        await order.save();
 
-    if(!isPasswordMatched){
-        return next(new ErrorHaandler("Invlaid Email or Password",401))
+        res.status(200).json({ message: 'Order cancelled successfully.', order });
+    } catch (error) {
+        console.error('Error cancelling order:', error);
+        res.status(500).json({ message: error.message });
     }
+});
 
-    user.password = undefined;
-
-    res.status(200).json({
-        success:true,
-        user
-    })
-
-}))
-
-router.get("/profile", catchAsyncErrors(async (req, res, next) => {
-    const { email } = req.query;
-    if (!email) {
-        return next(new ErrorHandler("Please provide an email", 400));
-    }
-    const user = await User.findOne({ email });
-    if (!user) {
-        return next(new ErrorHandler("User not found", 404));
-    }
-    res.status(200).json({
-        success: true,
-        user: {
-            name: user.name,
-            email: user.email,
-            phoneNumber: user.phoneNumber,
-            avatarUrl: user.avatar.url
-        },
-        addresses: user.addresses,
-    });
-}));
-
-router.post("/add-address", catchAsyncErrors(async (req, res, next) => {
-    const { country, city, address1, address2, zipCode, addressType, email } = req.body;
-
-    const user = await User.findOne({ email });
-
-    if (!user) {
-        return next(new ErrorHandler("User not found", 404));
-    }
-
-    const newAddress = {
-        country,
-        city,
-        address1,
-        address2,
-        zipCode,
-        addressType,
-    };
-
-    user.addresses.push(newAddress);
-    await user.save();
-
-    res.status(201).json({
-        success: true,
-        addresses: user.addresses,
-    });
-}));
-
-router.get("/addresses", catchAsyncErrors(async (req, res, next) => {
-    const { email } = req.query;
-    if (!email) {
-        return next(new ErrorHandler("Please provide an email", 400));
-    }
-    const user = await User.findOne({ email });
-    if (!user) {
-        return next(new ErrorHandler("User not found", 404));
-    }
-    res.status(200).json({
-        success: true,
-        addresses: user.addresses,
-    });
-}
-));
-
-module.exports = router;
+module.exports=router;
+    
